@@ -34,10 +34,9 @@ function connect()
         return false
     end
 
-    -- Send the username to the server
+    -- Prompt for username
     io.write("Please enter username: ")
     username = io.read()
-    client:send(username .. "\n")
 
     return true
 end
@@ -48,6 +47,14 @@ function send_and_receive()
 
     -- Use uv_tty to handle non-blocking stdin
     local stdin = uv.new_tty(0, false)
+
+    -- Send the username as the first message
+    client:send(username .. "\n")
+
+    -- Display the initial prompt
+    io.write("You: ")
+    io.flush()
+
     uv.read_start(stdin, function(err, data)
         if err then
             print("Error reading from stdin: " .. err)
@@ -63,7 +70,12 @@ function send_and_receive()
                 print("Exiting chat...")
                 client:send("SIG_EXIT\n")
                 uv.stop() -- Stop the event loop
+                return
             end
+
+            -- Re-display the prompt after sending the message
+            io.write("You: ")
+            io.flush()
         end
     end)
 
@@ -82,11 +94,16 @@ function send_and_receive()
         -- Receive message from the server
         local response, err = client:receive("*l")
         if response then
-            -- Only display the message if it is not from the current user
-            if not response:find(username .. ": ") then
-                print("\n" .. response)
-                io.flush()
-            end
+            -- Move to the beginning of the line and clear it
+            io.write("\r\27[K")
+            io.flush()
+
+            -- Print the message from the server
+            print(response)
+
+            -- Re-display the prompt
+            io.write("You: ")
+            io.flush()
         elseif err ~= "timeout" then
             print("Connection error: " .. err)
             uv.stop()

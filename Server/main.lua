@@ -1,8 +1,20 @@
 local socket = require("socket")
 
+-- ANSI color codes
+local colors = {
+    "\27[31m", -- Red
+    "\27[32m", -- Green
+    "\27[33m", -- Yellow
+    "\27[34m", -- Blue
+    "\27[35m", -- Magenta
+    "\27[36m", -- Cyan
+    "\27[37m", -- White
+}
+local RESET = "\27[0m"
+
 -- Start a TCP server and ask for IP and port
 function start()
-    print("Empty IP/port will set it to localhost:8080")
+    print("Empty IP/port will set it to localhost:8080\n")
     print("Please set IP: ")
     local ip = io.read()
     if ip == "" then
@@ -26,6 +38,7 @@ local server = start()
 -- Arrays for storing connected clients
 local clients = {}
 local usernames = {}
+local client_colors = {} -- Array to store colors assigned to clients
 
 -- Function to broadcast a message to all clients except the sender
 local function broadcast(sender, message)
@@ -44,23 +57,30 @@ local function handle_client_message(client)
         -- Error means the client disconnected
         for i, stored_client in ipairs(clients) do
             if stored_client == client then
-                print(usernames[i] .. " has disconnected.")
+                local username = usernames[i]
+                local user_color = client_colors[i]
+                print(username .. " has disconnected.")
                 table.remove(clients, i)
                 table.remove(usernames, i)
+                table.remove(client_colors, i)
                 client:close()
+                -- Notify other clients
+                broadcast(nil, user_color .. username .. " has left the chat." .. RESET)
                 break
             end
         end
     else
         -- Broadcast message to all other clients
         local username = ""
+        local user_color = ""
         for i, stored_client in ipairs(clients) do
             if stored_client == client then
                 username = usernames[i]
+                user_color = client_colors[i]
                 break
             end
         end
-        local full_message = username .. ": " .. message
+        local full_message = user_color .. username .. ": " .. message .. RESET
         print(full_message) -- Print the message on the server console
 
         -- Broadcast to all clients except the sender
@@ -100,13 +120,18 @@ while true do
                 -- Switch back to non-blocking mode after receiving the username
                 client:settimeout(0)
 
-                -- Store the valid username and client
+                -- Assign a unique color to the client
+                local color_index = (#client_colors % #colors) + 1
+                local user_color = colors[color_index]
+
+                -- Store the valid username, client, and color
                 table.insert(clients, client)
                 table.insert(usernames, username)
+                table.insert(client_colors, user_color)
                 print(username .. " has connected.")
 
                 -- Notify other clients
-                broadcast(client, username .. " has joined the chat.")
+                broadcast(client, user_color .. username .. " has joined the chat." .. RESET)
             end
         else
             -- Existing client sent a message
