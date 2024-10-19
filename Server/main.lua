@@ -1,7 +1,7 @@
 local socket = require("socket")
 
 -- Create a TCP server socket and bind it to localhost on port 8080
-local server = assert(socket.bind("localhost", 8080))
+local server = assert(socket.bind("localhost", 8080)) -- change this to your computers ip
 local ip, port = server:getsockname()
 
 print("Server listening on " .. ip .. ":" .. port)
