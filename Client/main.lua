@@ -1,10 +1,9 @@
 local socket = require("socket")
-local uv = require("luv") -- Use luv for asynchronous I/O
+local uv = require("luv")
 
 -- Message to instruct user
 print("Send an empty message to exit")
 
--- Variables to store client and username
 local client
 local username
 
@@ -28,7 +27,7 @@ function connect()
     -- Create a TCP client socket
     client = assert(socket.tcp())
 
-    -- Connect to the server with error handling
+    -- Connect to the server
     local success, err = client:connect(ip, port)
     if not success then
         print("Failed to connect: " .. err)
@@ -45,7 +44,7 @@ end
 
 -- Function to send and receive messages concurrently
 function send_and_receive()
-    client:settimeout(0) -- Set the client socket to non-blocking mode
+    client:settimeout(0)
 
     -- Use uv_tty to handle non-blocking stdin
     local stdin = uv.new_tty(0, false)

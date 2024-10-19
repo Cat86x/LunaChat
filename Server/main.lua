@@ -1,10 +1,27 @@
 local socket = require("socket")
 
--- Create a TCP server socket and bind it to localhost on port 8080
-local server = assert(socket.bind("localhost", 8080)) -- change this to your computers ip
-local ip, port = server:getsockname()
+-- Start a TCP server and ask for IP and port
+function start()
+    print("Empty IP/port will set it to localhost:8080")
+    print("Please set IP: ")
+    local ip = io.read()
+    if ip == "" then
+        ip = "localhost"
+    end
 
-print("Server listening on " .. ip .. ":" .. port)
+    print("Please set port: ")
+    local port = io.read()
+    if port == "" then
+        port = "8080"
+    end
+
+    local server = assert(socket.bind(ip, port))
+    print("Server listening on " .. ip .. ":" .. port)
+    return server
+end
+
+-- Start the server and store the server socket
+local server = start()
 
 -- Arrays for storing connected clients
 local clients = {}
