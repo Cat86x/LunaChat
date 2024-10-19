@@ -1,28 +1,32 @@
 local socket = require("socket")
-
--- Create a TCP client socket
-local client = socket.tcp()
+local uv = require("luv") -- Use luv for asynchronous I/O
 
 -- Message to instruct user
 print("Send an empty message to exit")
 
+-- Variables to store client and username
+local client
+local username
+
 -- Function to connect to the server
 function connect()
-    -- Enter server IP
     io.write("Please enter server IP: ")
     local ip = io.read()
 
-    if ip == "" then -- checking if ip is empty else default it to localhost
+    if ip == "" then
         ip = "localhost"
-        print("No ip given defaulting to localhost")
+        print("No IP given, defaulting to localhost")
     end
     io.write("Please enter port: ")
     local port = io.read()
 
-    if port == "" then -- checking if port is empty else default it to 8080
+    if port == "" then
         port = "8080"
-        print("No port given defaulting to 8080")
+        print("No port given, defaulting to 8080")
     end
+
+    -- Create a TCP client socket
+    client = assert(socket.tcp())
 
     -- Connect to the server with error handling
     local success, err = client:connect(ip, port)
@@ -35,42 +39,68 @@ function connect()
     io.write("Please enter username: ")
     username = io.read()
     client:send(username .. "\n")
-    io.write("\n", "\n", "\n")
 
     return true
 end
 
--- Function to send and receive messages
+-- Function to send and receive messages concurrently
 function send_and_receive()
-    while true do
-        -- Read user input
-        local message = io.read()
+    client:settimeout(0) -- Set the client socket to non-blocking mode
 
-        -- Send message to the server
-        client:send(username .. ": " .. message .. "\n")
+    -- Use uv_tty to handle non-blocking stdin
+    local stdin = uv.new_tty(0, false)
+    uv.read_start(stdin, function(err, data)
+        if err then
+            print("Error reading from stdin: " .. err)
+            return
+        end
+        if data then
+            data = data:gsub("\r?\n", "") -- Remove newline characters
+            -- Send the message to the server
+            client:send(data .. "\n")
 
-        -- Check if the message is empty (to exit)
-        if message == "" then
-            print("Exiting chat...")
-            client:send("SIG_EXIT\n")
-            break
+            -- Exit the chat if the message is empty
+            if data == "" then
+                print("Exiting chat...")
+                client:send("SIG_EXIT\n")
+                uv.stop() -- Stop the event loop
+            end
+        end
+    end)
+
+    -- Get the file descriptor of the client socket
+    local sock_fd = client:getfd()
+
+    -- Create a poll handle for the client socket
+    local poll = uv.new_poll(sock_fd)
+    poll:start("r", function(err, events)
+        if err then
+            print("Error polling socket: " .. err)
+            uv.stop()
+            return
         end
 
-        -- Receive response from the server
-        local response, err = client:receive()
-        if not response then
-            print("Error receiving from server: " .. (err or "unknown error"))
-            break
+        -- Receive message from the server
+        local response, err = client:receive("*l")
+        if response then
+            -- Only display the message if it is not from the current user
+            if not response:find(username .. ": ") then
+                print("\n" .. response)
+                io.flush()
+            end
+        elseif err ~= "timeout" then
+            print("Connection error: " .. err)
+            uv.stop()
         end
+    end)
 
-        if response == message then
+    -- Start the event loop
+    uv.run()
 
-        else
-            print(response)
-        end
-
-        print("Message sent")
-    end
+    -- Clean up the poll handle after the event loop stops
+    poll:stop()
+    poll:close()
+    stdin:close()
 end
 
 -- Function to close the connection

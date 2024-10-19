@@ -6,66 +6,94 @@ local ip, port = server:getsockname()
 
 print("Server listening on " .. ip .. ":" .. port)
 
--- Global array for usernames and counter
+-- Arrays for storing connected clients
+local clients = {}
 local usernames = {}
-local counter = 1
 
--- Function to handle client communication
-function handle_client(client)
-    -- Receive username from the client and insert it into the array
-    local username = client:receive()
-    table.insert(usernames, username)
-    print(username .. " has connected.")
-
-    while true do
-        -- Receive a message from the client
-        local message, err = client:receive()
-
-        -- If there's an error or the client sends an empty message, exit the loop
-        if not message or message == "" then
-            print(username .. " has disconnected.")
-            client:send("Goodbye!\n")
-            client:close()
-
-            -- Remove the username from the array
-            for i, stored_username in ipairs(usernames) do
-                if stored_username == username then
-                    table.remove(usernames, i)
-                    break
-                end
-            end
-            break
+-- Function to broadcast a message to all clients except the sender
+local function broadcast(sender, message)
+    for i, client in ipairs(clients) do
+        if client ~= sender then
+            client:send(message .. "\n")
         end
-
-        -- Check for the exit signal
-        if message == "SIG_EXIT" then
-            print(username .. " sent exit signal.")
-            client:send("Goodbye!\n")
-            client:close()
-
-            -- Remove the username from the array
-            for i, stored_username in ipairs(usernames) do
-                if stored_username == username then
-                    table.remove(usernames, i)
-                    break
-                end
-            end
-            break
-        end
-
-        -- Print the received message
-        print(message)
-
-        -- Send a response back to the client
-        client:send("Message received: " .. message .. "\n")
     end
 end
 
--- Keep listening for connections
-while true do
-    -- Wait for a client to connect
-    local client = server:accept()
+-- Function to handle messages from a client
+local function handle_client_message(client)
+    local message, err = client:receive()
 
-    -- Handle the client in a separate function
-    handle_client(client)
+    if not message then
+        -- Error means the client disconnected
+        for i, stored_client in ipairs(clients) do
+            if stored_client == client then
+                print(usernames[i] .. " has disconnected.")
+                table.remove(clients, i)
+                table.remove(usernames, i)
+                client:close()
+                break
+            end
+        end
+    else
+        -- Broadcast message to all other clients
+        local username = ""
+        for i, stored_client in ipairs(clients) do
+            if stored_client == client then
+                username = usernames[i]
+                break
+            end
+        end
+        local full_message = username .. ": " .. message
+        print(full_message) -- Print the message on the server console
+
+        -- Broadcast to all clients except the sender
+        broadcast(client, full_message)
+    end
+end
+
+-- Main loop to accept and handle multiple clients using select
+while true do
+    -- Add server socket to the list of readable sockets
+    local readable = {server}
+
+    -- Add all connected clients to the readable list
+    for _, client in ipairs(clients) do
+        table.insert(readable, client)
+    end
+
+    -- Wait for any socket to become readable
+    local ready = socket.select(readable, nil)
+
+    -- Handle all ready sockets
+    for _, sock in ipairs(ready) do
+        if sock == server then
+            -- New client is trying to connect
+            local client = server:accept()
+            client:settimeout(nil)  -- Set to blocking mode to wait for the username
+
+            -- Try to receive the username
+            local username, err = client:receive()
+
+            -- If no username is received or there's an error, close the connection
+            if not username or username == "" then
+                print("Failed to receive username or username is empty.")
+                client:send("Invalid username. Disconnecting...\n")
+                client:close()
+            else
+                -- Switch back to non-blocking mode after receiving the username
+                client:settimeout(0)
+
+                -- Store the valid username and client
+                table.insert(clients, client)
+                table.insert(usernames, username)
+                print(username .. " has connected.")
+
+                -- Notify other clients
+                broadcast(client, username .. " has joined the chat.")
+            end
+        else
+            -- Existing client sent a message
+            handle_client_message(sock)
+        end
+    end
 end
